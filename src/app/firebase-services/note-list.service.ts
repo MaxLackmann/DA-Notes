@@ -1,22 +1,10 @@
 import { inject, Injectable } from '@angular/core';
 import { Note } from '../interfaces/note.interface';
-import {
-  query,
-  where,
-  orderBy,
-  limit,
-  Firestore,
-  collection,
-  doc,
-  onSnapshot,
-  addDoc,
-  deleteDoc,
-  updateDoc,
-} from '@angular/fire/firestore';
+import { query, where, orderBy, limit, Firestore, collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 
 @Injectable({
-  providedIn: 'root',
+  providedIn: 'root'
 })
 export class NoteListService {
   trashNotes: Note[] = [];
@@ -24,44 +12,99 @@ export class NoteListService {
 
   unsubTrash;
   unsubNotes;
-
+  unsubMarkedNotes;
+  
   firestore: Firestore = inject(Firestore);
   normalMarkedNotes: Note[] = [];
 
   constructor() {
     this.unsubTrash = this.subTrashList();
-    this.unsubNotes = this.subNotesList();
+    this.unsubNotes = this.subNoteslList();
+    this.unsubMarkedNotes = this.subMarkedNotesList();
   }
 
-  async addNote(item: {}) {
-    await addDoc(this.getNotesRef(), item)
-      .catch((err) => {
-        console.error(err);
-      })
-      .then((docRef) => {
-        console.log('Document written with ID: ', docRef?.id);
-      });
+  async deleteNote(colId: "notes" | "trash", docId: string) {
+    await deleteDoc(this.getSingleDocRef(colId, docId)).catch(
+      (err) => {console.error(err); }
+    )
+  }
+
+  async updateNote(note: Note) {
+    if(note.id) {
+      let docRef = this.getSingleDocRef(this.getColIdFromNote(note),note.id);
+      await updateDoc(docRef,this.getCleanJson(note)).catch(
+        (err) => {console.error(err); }
+      )
+    }
+  }
+
+  getCleanJson(note: Note):{} {
+    return {
+      type: note.type,
+      title: note.title,
+      description: note.description,
+      marked: note.marked,
+    }
+  }
+  getColIdFromNote(note: Note) {
+    if(note.type == 'note') {
+      return 'notes';
+    } else {
+      return 'trash';
+    }
+  }
+
+  async addNote(item: Note, colId: 'notes' | 'trash') {
+    if (colId == 'notes') {
+      await addDoc(this.getNotesRef(), item)
+        .catch((err) => {
+          console.error(err);
+        })
+        .then((docRef) => {
+          console.log('Document written with ID: ', docRef);
+        });
+    } else {
+      await addDoc(this.getTrashRef(), item);
+    }
   }
 
   ngonDestroy() {
     this.unsubTrash();
     this.unsubNotes();
+    this.unsubMarkedNotes();
   }
 
-  subNotesList() {
-    return onSnapshot(this.getNotesRef(), (list) => {
+  subTrashList() {
+   return onSnapshot(this.getTrashRef(), (list) => {
       this.trashNotes = [];
       list.forEach((element) => {
-        console.log(this.setNoteObject(element.data(), element.id));
+        this.trashNotes.push(this.setNoteObject(element.data(), element.id));
       });
     });
   }
 
-  subTrashList() {
-    return onSnapshot(this.getTrashRef(), (list) => {
-      this.trashNotes = [];
+  subNoteslList() {
+    const q = query(this.getNotesRef(), limit(100));
+    return onSnapshot(q, (list) => {
+      this.normalNotes = [];
       list.forEach((element) => {
-        console.log(this.setNoteObject(element.data(), element.id));
+        this.normalNotes.push(this.setNoteObject(element.data(), element.id));
+      });
+    });
+  }
+
+  subMarkedNotesList() {
+    const q = query(
+      this.getNotesRef(),
+      where('marked', '==', true),
+      limit(100)
+    );
+    return onSnapshot(q, (list) => {
+      this.normalMarkedNotes = [];
+      list.forEach((element) => {
+        this.normalMarkedNotes.push(
+          this.setNoteObject(element.data(), element.id)
+        );
       });
     });
   }
@@ -69,11 +112,11 @@ export class NoteListService {
   setNoteObject(obj: any, id: string): Note {
     return {
       id: id || '',
-      type: obj.type || 'note',
+      type: obj.type || "note",
       title: obj.title || '',
       description: obj.description || '',
       marked: obj.marked || false,
-    };
+    }
   }
 
   getNotesRef() {
@@ -84,6 +127,7 @@ export class NoteListService {
   }
 
   getSingleDocRef(colId: string, docId: string) {
-    return doc(collection(this.firestore, colId), docId);
+    return doc(collection(this.firestore, colId),docId);
   }
+
 }
